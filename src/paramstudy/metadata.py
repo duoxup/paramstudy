@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -44,6 +45,31 @@ class ColumnMeta:
             "unit": unit_to_dict(self.unit),
             "preferred_unit": unit_to_dict(self.preferred_unit),
         }
+
+    def to_csv_row(self) -> dict[str, str]:
+        """Return a dict suitable for CSV writer, with column name omitted."""
+        return {
+            "label": self.label or "",
+            "symbol": self.symbol or "",
+            "unit": self.unit.render() if self.unit is not None else "",
+            "preferred_unit": self.preferred_unit.render() if self.preferred_unit is not None else "",
+        }
+
+    @classmethod
+    def from_csv_row(cls, row: Mapping[str, str]) -> ColumnMeta:
+        """Build a ColumnMeta from a CSV row dict (column key omitted)."""
+        unit = parse_unit(row["unit"]) if row.get("unit", "").strip() else None
+        preferred_unit = (
+            parse_unit(row["preferred_unit"]) if row.get("preferred_unit", "").strip() else None
+        )
+        if unit is None and preferred_unit is not None:
+            raise ValueError("ColumnMeta.preferred_unit requires ColumnMeta.unit.")
+        return cls(
+            label=_clean_optional_string(row.get("label")),
+            symbol=_clean_optional_string(row.get("symbol")),
+            unit=unit,
+            preferred_unit=preferred_unit,
+        )
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> ColumnMeta:
@@ -127,6 +153,62 @@ class ColumnMetaRegistry:
         path = Path(path_or_fp)
         with path.open("r", encoding="utf-8") as file:
             return cls.from_dict(json.load(file))
+
+    _CSV_FIELDNAMES = ["column", "label", "symbol", "unit", "preferred_unit"]
+
+    def to_csv(
+        self,
+        path_or_fp: PathLike | IO[str],
+    ) -> None:
+        """Write the registry as a row-per-column CSV file.
+
+        Units are serialized as their rendered string form so the file is
+        human-readable and round-trippable via from_csv.
+        """
+        lines = [self._CSV_FIELDNAMES] + [
+            [column, row["label"], row["symbol"], row["unit"], row["preferred_unit"]]
+            for column, row in sorted(self._to_csv_rows().items())
+        ]
+
+        if hasattr(path_or_fp, "write"):
+            writer = csv.writer(path_or_fp, lineterminator="\n")
+            writer.writerows(lines)
+            return
+
+        path = Path(path_or_fp)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file, lineterminator="\n")
+            writer.writerows(lines)
+
+    @classmethod
+    def from_csv(cls, path_or_fp: PathLike | IO[str]) -> ColumnMetaRegistry:
+        """Read a registry from a CSV file written by to_csv.
+
+        Each row maps to one ColumnMeta entry. Empty cells are treated as None.
+        Unit strings are parsed via parse_unit so they round-trip cleanly.
+        """
+        if hasattr(path_or_fp, "read"):
+            reader = csv.DictReader(path_or_fp)
+            return cls._from_csv_rows(list(reader))
+
+        path = Path(path_or_fp)
+        with path.open("r", encoding="utf-8", newline="") as file:
+            reader = csv.DictReader(file)
+            return cls._from_csv_rows(list(reader))
+
+    def _to_csv_rows(self) -> dict[str, dict[str, str]]:
+        return {column: meta.to_csv_row() for column, meta in self._metas.items()}
+
+    @classmethod
+    def _from_csv_rows(cls, rows: list[dict[str, str]]) -> ColumnMetaRegistry:
+        registry = cls()
+        for row in rows:
+            column = row.get("column", "").strip()
+            if not column:
+                raise ValueError("CSV row missing non-empty 'column' field.")
+            registry.add(column, ColumnMeta.from_csv_row(row))
+        return registry
 
 
 def make_registry(spec: Mapping[str, ColumnMetaInput]) -> ColumnMetaRegistry:
