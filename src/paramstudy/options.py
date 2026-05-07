@@ -78,6 +78,22 @@ class TripcolorOptions:
 
 
 @dataclass(frozen=True)
+class SecondaryContourOptions:
+    """Overlay a second contour on heatmap/contour/tricontour/tripcolor plots.
+
+    ``column`` names a DataFrame column whose values are used as the z-data
+    for the secondary contour.  Set to ``None`` (the default) to disable the
+    overlay.
+    """
+
+    column: str | None = None
+    levels: int | Sequence[float] = 10
+    color: str = "black"
+    linewidths: float = 1.0
+    labels: bool = True
+
+
+@dataclass(frozen=True)
 class ScaleOptions:
     x: str = "linear"
     y: str = "linear"
@@ -94,6 +110,7 @@ class AxesOptions:
     color: ColorOptions = field(default_factory=ColorOptions)
     contour: ContourOptions = field(default_factory=ContourOptions)
     tripcolor: TripcolorOptions = field(default_factory=TripcolorOptions)
+    secondary_contour: SecondaryContourOptions = field(default_factory=SecondaryContourOptions)
 
 
 @dataclass(frozen=True)
