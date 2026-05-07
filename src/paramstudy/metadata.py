@@ -58,9 +58,9 @@ class ColumnMeta:
     @classmethod
     def from_csv_row(cls, row: Mapping[str, str]) -> ColumnMeta:
         """Build a ColumnMeta from a CSV row dict (column key omitted)."""
-        unit = parse_unit(row["unit"]) if row.get("unit", "").strip() else None
+        unit = _clean_csv_unit(row.get("unit")) if row.get("unit", "").strip() else None
         preferred_unit = (
-            parse_unit(row["preferred_unit"]) if row.get("preferred_unit", "").strip() else None
+            _clean_csv_unit(row.get("preferred_unit")) if row.get("preferred_unit", "").strip() else None
         )
         if unit is None and preferred_unit is not None:
             raise ValueError("ColumnMeta.preferred_unit requires ColumnMeta.unit.")
@@ -256,6 +256,16 @@ def _clean_optional_string(value: Any) -> str | None:
         raise TypeError(f"Expected a string or None, got {type(value).__name__}.")
     stripped = value.strip()
     return stripped or None
+
+
+def _clean_csv_unit(value: str) -> UnitLike | None:
+    """Parse a unit string from CSV, falling back to Unitless on failure."""
+    if not value.strip():
+        return None
+    try:
+        return parse_unit(value.strip())
+    except ValueError:
+        return Unitless(label=value.strip())
 
 
 def _coerce_unit(value: Any) -> UnitLike | None:

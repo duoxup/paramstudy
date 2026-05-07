@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 import numpy as np
 import pandas as pd
 
@@ -67,6 +68,8 @@ def draw_line_axes(
 
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult()
 
 
@@ -121,6 +124,8 @@ def draw_scatter_axes(
     )
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult(mappable=mappable if color_col is not None else None)
 
 
@@ -165,6 +170,8 @@ def draw_heatmap_axes(
     )
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult(mappable=mappable)
 
 
@@ -216,6 +223,8 @@ def draw_contour_axes(
 
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult(mappable=mappable)
 
 
@@ -269,6 +278,8 @@ def draw_tricontour_axes(
 
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult(mappable=mappable)
 
 
@@ -315,6 +326,8 @@ def draw_tripcolor_axes(
     )
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
+    ax.set_xscale(options.scale.x)
+    ax.set_yscale(options.scale.y)
     return AxesDrawResult(mappable=mappable)
 
 
@@ -412,10 +425,13 @@ def _apply_color_limits(
     if color_limits is not None:
         vmin = color_limits[0] if vmin is None else vmin
         vmax = color_limits[1] if vmax is None else vmax
-    if vmin is not None:
-        kwargs["vmin"] = vmin
-    if vmax is not None:
-        kwargs["vmax"] = vmax
+    if options.scale.z == "log":
+        kwargs["norm"] = LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        if vmin is not None:
+            kwargs["vmin"] = vmin
+        if vmax is not None:
+            kwargs["vmax"] = vmax
 
 
 def _resolve_contour_levels(

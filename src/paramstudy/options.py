@@ -78,10 +78,18 @@ class TripcolorOptions:
 
 
 @dataclass(frozen=True)
+class ScaleOptions:
+    x: str = "linear"
+    y: str = "linear"
+    z: str = "linear"
+
+
+@dataclass(frozen=True)
 class AxesOptions:
     data: AxesDataOptions = field(default_factory=AxesDataOptions)
     labels: LabelOptions = field(default_factory=LabelOptions)
     units: UnitOptions = field(default_factory=UnitOptions)
+    scale: ScaleOptions = field(default_factory=ScaleOptions)
     legend: LegendOptions = field(default_factory=LegendOptions)
     color: ColorOptions = field(default_factory=ColorOptions)
     contour: ContourOptions = field(default_factory=ContourOptions)
