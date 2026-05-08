@@ -96,7 +96,7 @@ python examples/demo_gallery.py
 Implemented foundation:
 
 - column metadata with JSON and CSV serialization;
-- structured unit parsing/rendering and unit-aware scaling;
+- structured unit parsing (``ns``, ``mm^2``, ``mm mrad``, ``eV/c``, ``W/m^2``) and unit-aware scaling;
 - plot specification for independent variables and response variables;
 - GRID/FACET page and subplot planning for long-form DataFrames;
 - Matplotlib Axes-level `line` and `scatter` drawing;

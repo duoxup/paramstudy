@@ -141,6 +141,52 @@ class TestParseUnit:
     def test_strips_whitespace(self):
         assert parse_unit("  ns  ").render() == "ns"
 
+    def test_division_simple(self):
+        unit = parse_unit("m/s")
+        assert isinstance(unit, CompoundUnit)
+        assert unit.render() == "m/s"
+
+    def test_division_with_prefix(self):
+        unit = parse_unit("eV/c")
+        assert unit.render() == "eV/c"
+
+    def test_division_with_dimension(self):
+        unit = parse_unit("W/m^2")
+        assert unit.render() == "W/m^2"
+
+    def test_division_denom_spaces(self):
+        unit = parse_unit("eV/m s")
+        assert unit.render() == "eV/m s"
+
+    def test_division_no_numerator(self):
+        unit = parse_unit("/s")
+        assert unit.render() == "1/s"
+
+    def test_division_with_space_around_slash(self):
+        unit = parse_unit("m / s")
+        assert unit.render() == "m/s"
+
+    def test_neg_dim_simple_renders_correctly(self):
+        unit = SimpleUnit("s", dimension=-1)
+        assert unit.render() == "s^-1"
+
+
+class TestCompoundUnitFactorToBase:
+    def test_product(self):
+        cu = CompoundUnit([SimpleUnit("m", SIPrefix.MILLI), SimpleUnit("rad", SIPrefix.MILLI)])
+        # mm mrad: 1e-3 * 1e-3 = 1e-6
+        assert cu.factor_to_base == pytest.approx(1e-6)
+
+    def test_ratio(self):
+        cu = CompoundUnit([SimpleUnit("eV", SIPrefix.MEGA), SimpleUnit("c", dimension=-1)])
+        # MeV/c: 1e6 * 1 = 1e6
+        assert cu.factor_to_base == pytest.approx(1e6)
+
+    def test_neg_dim_factor(self):
+        # 1/ms: factor = 1 / 1e-3 = 1e3
+        cu = CompoundUnit([SimpleUnit("s", SIPrefix.MILLI, dimension=-1)])
+        assert cu.factor_to_base == pytest.approx(1e3)
+
 
 class TestUnitDictRoundtrip:
     def test_simple_roundtrip(self):
@@ -180,6 +226,15 @@ class TestUnitDictRoundtrip:
     def test_simple_invalid_prefix_raises(self):
         with pytest.raises(ValueError, match="Invalid SI prefix"):
             unit_from_dict({"kind": "simple", "symbol": "m", "prefix": "BOGUS"})
+
+    def test_compound_with_neg_dim_roundtrip(self):
+        # eV/c: positive + negative dimension
+        original = CompoundUnit(
+            [SimpleUnit("eV", SIPrefix.MEGA), SimpleUnit("c", dimension=-1)]
+        )
+        restored = unit_from_dict(unit_to_dict(original))
+        assert restored.render() == original.render()
+        assert restored.factor_to_base == pytest.approx(original.factor_to_base)
 
     def test_compound_bad_units_raises(self):
         with pytest.raises(ValueError, match="sequence"):

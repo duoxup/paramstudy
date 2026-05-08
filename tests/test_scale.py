@@ -50,3 +50,10 @@ def test_scale_to_preferred_simple_unit():
 
     assert scale.multiplier == pytest.approx(1000.0)
     assert scale.unit.render() == "ps"
+
+
+def test_autoscale_never_scales_unscalable_symbol():
+    scale = autoscale_unit([1e-9, 1e-8, 1e-7], SimpleUnit("c"))
+
+    assert scale.multiplier == 1.0
+    assert scale.unit.render() == "c"

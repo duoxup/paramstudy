@@ -7,6 +7,7 @@ import numpy as np
 
 from paramstudy.unit import SIPrefix, SimpleUnit, UnitLike
 
+_UNSCALABLE_SYMBOLS: frozenset[str] = frozenset({"c"})
 
 _DISPLAY_PREFIXES: tuple[SIPrefix, ...] = (
     SIPrefix.PICO,
@@ -96,6 +97,9 @@ def autoscale_unit(values: Iterable[float], unit: UnitLike) -> UnitScale:
 
 
 def _autoscale_simple_unit(values: Iterable[float], unit: SimpleUnit) -> UnitScale:
+    if unit.symbol in _UNSCALABLE_SYMBOLS:
+        return UnitScale(multiplier=1.0, unit=unit)
+
     array = np.asarray(values, dtype=float)
     finite = np.abs(array[np.isfinite(array)])
     if finite.size == 0 or not np.any(finite > 0):

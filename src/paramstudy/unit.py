@@ -100,9 +100,14 @@ class SimpleUnit:
 class CompoundUnit:
     """A compound unit represented as a sequence of simple units.
 
-    The first version only models structure and rendering. Scaling rules for
-    compound units should be added later, after deciding how to represent
-    products, ratios, and mixed dimensions.
+    Positive-dimension units form the numerator (joined by ``separator``).
+    Negative-dimension units form the denominator and are rendered after a ``/``
+    with their absolute dimension.
+
+    Examples::
+
+        CompoundUnit([SimpleUnit("m", MILLI), SimpleUnit("rad", MILLI)])  # "mm mrad"
+        CompoundUnit([SimpleUnit("eV", MEGA), SimpleUnit("c", dim=-1)])   # "MeV/c"
     """
 
     units: tuple[SimpleUnit, ...]
@@ -114,8 +119,33 @@ class CompoundUnit:
         if not self.units:
             raise ValueError("CompoundUnit.units must be non-empty.")
 
+    @property
+    def factor_to_base(self) -> float:
+        """Product of per-component scale factors to base (unprefixed, dim=1) units."""
+        result = 1.0
+        for u in self.units:
+            result *= u.prefix.factor ** u.dimension
+        return result
+
     def render(self) -> str:
-        return self.separator.join(unit.render() for unit in self.units)
+        num_units = [u for u in self.units if u.dimension > 0]
+        denom_units = [u for u in self.units if u.dimension < 0]
+
+        num_str = self.separator.join(u.render() for u in num_units)
+
+        if not denom_units:
+            return num_str
+
+        denom_parts: list[str] = []
+        for u in denom_units:
+            d = abs(u.dimension)
+            text = f"{u.prefix.symbol}{u.symbol}"
+            if d != 1:
+                text = f"{text}^{d}"
+            denom_parts.append(text)
+        denom_str = self.separator.join(denom_parts)
+
+        return f"{num_str}/{denom_str}" if num_str else f"1/{denom_str}"
 
     def __str__(self) -> str:
         return self.render()
@@ -139,6 +169,7 @@ UnitLike = SimpleUnit | CompoundUnit | Unitless
 _UNITLESS_LABELS = frozenset({"a.u.", "a.u", "au", "arb.", "arb", "normalized", "norm."})
 _BASE_UNITS = (
     "eV",
+    "c",
     "rad",
     "Hz",
     "mol",
@@ -166,10 +197,20 @@ _PREFIX_SYMBOLS = tuple(sorted(_PREFIX_BY_SYMBOL, key=len, reverse=True))
 def parse_unit(value: str) -> UnitLike:
     """Parse a unit string into a UnitLike object.
 
-    Supported grammar is intentionally small:
-    simple units like "ns", "mm", "MeV", "mm^2";
-    compound units as whitespace-separated simple units, e.g. "mm mrad";
-    unitless markers like "a.u.".
+    Grammar::
+
+        compound  = numerator "/" denominator
+        numerator = simple (" " simple)*
+        denominator = simple (" " simple)*
+        simple    = [prefix]symbol["^"dim]
+
+    - Space joins simple units (multiplication).
+    - ``/`` separates numerator from denominator; denominator units get
+      negative dimension.
+    - ``^`` followed by an integer sets the dimension of the preceding
+      symbol/prefix pair.
+
+    Examples: ``ns``, ``mm^2``, ``mm mrad``, ``eV/c``, ``W/m^2``, ``eV m/s``.
     """
 
     text = value.strip()
@@ -178,9 +219,24 @@ def parse_unit(value: str) -> UnitLike:
     if text.lower() in _UNITLESS_LABELS:
         return Unitless(label=text)
 
-    parts = text.split()
-    if len(parts) > 1:
+    if "/" in text:
+        num_text, denom_text = text.split("/", 1)
+        num_parts = [p for p in num_text.strip().split() if p]
+        denom_parts = [p for p in denom_text.strip().split() if p]
+
+        units = [_parse_simple_unit(p) for p in num_parts]
+        for p in denom_parts:
+            su = _parse_simple_unit(p)
+            units.append(su.with_dimension(-su.dimension))
+
+        if not units:
+            raise ValueError(f"Cannot parse unit: {value!r}")
+        return CompoundUnit(units)
+
+    if " " in text:
+        parts = text.split()
         return CompoundUnit([_parse_simple_unit(part) for part in parts])
+
     return _parse_simple_unit(text)
 
 
