@@ -24,7 +24,13 @@ from paramstudy.options import (
     UnitOptions,
 )
 from paramstudy.planner import AxesSlot, FacetKey, FigurePlan, PagePlan, build_page_plan
-from paramstudy.scale import UnitScale, autoscale_unit, resolve_unit_scale, scale_to_unit
+from paramstudy.scale import (
+    UnitScale,
+    autoscale_unit,
+    resolve_compound_scale,
+    resolve_unit_scale,
+    scale_to_unit,
+)
 from paramstudy.spec import InputMap, PlotKind, PlotSpec, ResponseMap
 from paramstudy.unit import (
     CompoundUnit,
@@ -82,6 +88,7 @@ __all__ = [
     "line",
     "make_registry",
     "parse_unit",
+    "resolve_compound_scale",
     "resolve_unit_scale",
     "scale_to_unit",
     "scatter",
