@@ -84,6 +84,10 @@ class SecondaryContourOptions:
     ``column`` names a DataFrame column whose values are used as the z-data
     for the secondary contour.  Set to ``None`` (the default) to disable the
     overlay.
+
+    ``label_fontsize`` overrides the contour-label font size; ``None`` (the
+    default) defers to the active matplotlib rcParams so callers can tune it
+    via ``plt.rc_context``.
     """
 
     column: str | None = None
@@ -91,6 +95,7 @@ class SecondaryContourOptions:
     color: str = "black"
     linewidths: float = 1.0
     labels: bool = True
+    label_fontsize: float | str | None = None
 
 
 @dataclass(frozen=True)

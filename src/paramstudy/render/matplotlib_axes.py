@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from paramstudy.metadata import ColumnMeta, ColumnMetaRegistry
-from paramstudy.options import AxesOptions
+from paramstudy.options import AxesOptions, SecondaryContourOptions
 from paramstudy.render._util import format_scaled_value
 from paramstudy.scale import UnitScale, resolve_unit_scale
 from paramstudy.spec import PlotKind, PlotSpec
@@ -487,7 +487,7 @@ def _draw_secondary_grid_contour(
         linewidths=options.secondary_contour.linewidths,
     )
     if options.secondary_contour.labels:
-        ax.clabel(cs, inline=True, fontsize=8)
+        _apply_secondary_contour_labels(ax, cs, options.secondary_contour)
 
 
 def _draw_secondary_tri_contour(
@@ -514,7 +514,18 @@ def _draw_secondary_tri_contour(
         linewidths=options.secondary_contour.linewidths,
     )
     if options.secondary_contour.labels:
-        ax.clabel(cs, inline=True, fontsize=8)
+        _apply_secondary_contour_labels(ax, cs, options.secondary_contour)
+
+
+def _apply_secondary_contour_labels(
+    ax: plt.Axes,
+    cs: Any,
+    options: SecondaryContourOptions,
+) -> None:
+    kwargs: dict[str, Any] = {"inline": True}
+    if options.label_fontsize is not None:
+        kwargs["fontsize"] = options.label_fontsize
+    ax.clabel(cs, **kwargs)
 
 
 def _require_columns(df: pd.DataFrame, columns: list[str | None]) -> None:

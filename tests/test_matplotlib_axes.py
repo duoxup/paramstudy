@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from paramstudy.metadata import make_registry
-from paramstudy.options import AxesOptions
+from paramstudy.options import AxesOptions, SecondaryContourOptions
 from paramstudy.render.matplotlib_axes import (
     draw_contour_axes,
     draw_heatmap_axes,
@@ -190,4 +190,61 @@ def test_draw_tripcolor_axes_returns_mappable():
     assert result.mappable is not None
     assert ax.get_xlabel() == "Horizontal offset [um]"
     assert ax.get_ylabel() == "Horizontal angle [urad]"
+    plt.close(figure)
+
+
+def _heatmap_with_secondary_contour(label_fontsize):
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 3, 1, 2, 3, 1, 2, 3],
+            "y": [10, 10, 10, 20, 20, 20, 30, 30, 30],
+            "z": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
+            "z2": [10.0, 20.0, 30.0, 15.0, 25.0, 35.0, 20.0, 30.0, 40.0],
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = AxesOptions(
+        secondary_contour=SecondaryContourOptions(
+            column="z2", labels=True, label_fontsize=label_fontsize
+        ),
+    )
+    return df, spec, options
+
+
+def test_secondary_contour_label_defers_to_rcparams_by_default():
+    df, spec, options = _heatmap_with_secondary_contour(label_fontsize=None)
+    figure, ax = plt.subplots()
+    captured: list[dict] = []
+    real_clabel = ax.clabel
+
+    def spy(*args, **kwargs):
+        captured.append(kwargs)
+        return real_clabel(*args, **kwargs)
+
+    ax.clabel = spy  # type: ignore[method-assign]
+    draw_heatmap_axes(ax, df, spec, options=options)
+
+    assert captured, "clabel was not called"
+    assert "fontsize" not in captured[-1]
+    plt.close(figure)
+
+
+def test_secondary_contour_label_uses_explicit_fontsize():
+    df, spec, options = _heatmap_with_secondary_contour(label_fontsize=14)
+    figure, ax = plt.subplots()
+    captured: list[dict] = []
+    real_clabel = ax.clabel
+
+    def spy(*args, **kwargs):
+        captured.append(kwargs)
+        return real_clabel(*args, **kwargs)
+
+    ax.clabel = spy  # type: ignore[method-assign]
+    draw_heatmap_axes(ax, df, spec, options=options)
+
+    assert captured and captured[-1].get("fontsize") == 14
     plt.close(figure)
