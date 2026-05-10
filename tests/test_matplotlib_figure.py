@@ -4,6 +4,7 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import pytest
 
 from paramstudy.metadata import make_registry
 from paramstudy.options import (
@@ -133,6 +134,72 @@ def test_facet_titles_format_numeric_values_with_metadata_units():
 
     assert "Charge=50pC" in titles
     assert "Charge=100pC" in titles
+    plt.close(result.figure)
+
+
+def test_row_colorbar_uses_per_row_color_limits():
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2, 1, 2, 1, 2],
+            "y": [10, 10, 20, 20, 10, 10, 20, 20],
+            "z": [1e6, 2e6, 3e6, 4e6, 100e6, 200e6, 300e6, 400e6],
+            "row": ["a", "a", "a", "a", "b", "b", "b", "b"],
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", row="row"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = FigureOptions(
+        facets=FacetLayoutOptions(mode=FacetLayoutMode.GRID),
+        colorbar=ColorbarOptions(mode=ColorbarMode.ROW),
+    )
+
+    result = draw_figures(df, spec, meta=ps_meta(), figure_options=options)[0]
+
+    clims_by_row: dict[int, list[tuple[float, float]]] = {}
+    for axes_result, slot in zip(result.axes_results, result.plan.slots):
+        if axes_result is None or axes_result.mappable is None:
+            continue
+        clims_by_row.setdefault(slot.layout_row, []).append(axes_result.mappable.get_clim())
+
+    assert set(clims_by_row.keys()) == {0, 1}
+    assert clims_by_row[0][0] == pytest.approx((1.0, 4.0))
+    assert clims_by_row[1][0] == pytest.approx((100.0, 400.0))
+    plt.close(result.figure)
+
+
+def test_col_colorbar_uses_per_col_color_limits():
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2, 1, 2, 1, 2],
+            "y": [10, 10, 20, 20, 10, 10, 20, 20],
+            "z": [1e6, 2e6, 3e6, 4e6, 100e6, 200e6, 300e6, 400e6],
+            "col": ["c1", "c1", "c1", "c1", "c2", "c2", "c2", "c2"],
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", col="col"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = FigureOptions(
+        facets=FacetLayoutOptions(mode=FacetLayoutMode.GRID),
+        colorbar=ColorbarOptions(mode=ColorbarMode.COL),
+    )
+
+    result = draw_figures(df, spec, meta=ps_meta(), figure_options=options)[0]
+
+    clims_by_col: dict[int, list[tuple[float, float]]] = {}
+    for axes_result, slot in zip(result.axes_results, result.plan.slots):
+        if axes_result is None or axes_result.mappable is None:
+            continue
+        clims_by_col.setdefault(slot.layout_col, []).append(axes_result.mappable.get_clim())
+
+    assert set(clims_by_col.keys()) == {0, 1}
+    assert clims_by_col[0][0] == pytest.approx((1.0, 4.0))
+    assert clims_by_col[1][0] == pytest.approx((100.0, 400.0))
     plt.close(result.figure)
 
 

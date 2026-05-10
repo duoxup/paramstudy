@@ -79,7 +79,9 @@ def _draw_one_figure(
 
     axes_results: list[AxesDrawResult | None] = []
     colorbar_items: list[tuple[Any, plt.Axes, AxesSlot]] = []
-    color_limits = _resolve_color_limits(df, spec, meta, axes_options, figure_options)
+    slot_color_limits = _resolve_slot_color_limits(
+        df, spec, plan, meta, axes_options, figure_options
+    )
     axes_flat = axes.ravel()
     for slot in plan.slots:
         ax = axes_flat[slot.index]
@@ -94,7 +96,9 @@ def _draw_one_figure(
             axes_results.append(None)
             continue
 
-        result = _draw_axes(ax, subset, spec, meta, axes_options, color_limits)
+        result = _draw_axes(
+            ax, subset, spec, meta, axes_options, slot_color_limits.get(slot.index)
+        )
         if result.mappable is not None:
             colorbar_items.append((result.mappable, ax, slot))
         _set_slot_title(ax, slot, spec, df, meta, axes_options, figure_options)
@@ -350,19 +354,56 @@ def _resolve_column_scale(
     )
 
 
-def _resolve_color_limits(
+def _resolve_slot_color_limits(
     df: pd.DataFrame,
     spec: PlotSpec,
+    plan: FigurePlan,
     meta: ColumnMetaRegistry | None,
     axes_options: AxesOptions,
     figure_options: FigureOptions,
-) -> tuple[float, float] | None:
+) -> dict[int, tuple[float, float] | None]:
+    """Per-slot color limits scoped by the active colorbar mode."""
     column = spec.responses.color or spec.responses.primary
     if column is None or column not in df or not pd.api.types.is_numeric_dtype(df[column]):
+        return {}
+
+    mode = figure_options.colorbar.mode
+    user_override = (
+        axes_options.color.vmin is not None or axes_options.color.vmax is not None
+    )
+
+    if mode in (ColorbarMode.NONE, ColorbarMode.EACH) and not user_override:
+        return {}
+
+    if mode in (ColorbarMode.NONE, ColorbarMode.EACH, ColorbarMode.FIGURE):
+        limits = _column_limits(df, column, meta, axes_options)
+        return {slot.index: limits for slot in plan.slots}
+
+    group_attr = "layout_row" if mode is ColorbarMode.ROW else "layout_col"
+    by_group: dict[int, list[AxesSlot]] = {}
+    for slot in plan.slots:
+        if not slot.has_data or slot.is_unused:
+            continue
+        by_group.setdefault(getattr(slot, group_attr), []).append(slot)
+
+    result: dict[int, tuple[float, float] | None] = {}
+    for group_slots in by_group.values():
+        frames = [_subset_for_slot(df, spec, s) for s in group_slots]
+        group_df = pd.concat(frames) if frames else df.iloc[0:0]
+        limits = _column_limits(group_df, column, meta, axes_options)
+        for slot in group_slots:
+            result[slot.index] = limits
+    return result
+
+
+def _column_limits(
+    df: pd.DataFrame,
+    column: str,
+    meta: ColumnMetaRegistry | None,
+    axes_options: AxesOptions,
+) -> tuple[float, float] | None:
+    if column not in df or not pd.api.types.is_numeric_dtype(df[column]):
         return None
-    if figure_options.colorbar.mode is ColorbarMode.EACH:
-        if axes_options.color.vmin is None and axes_options.color.vmax is None:
-            return None
     column_meta = _meta(meta, column)
     scale = _resolve_column_scale(df, column, column_meta, axes_options)
     multiplier = scale.multiplier if scale is not None else 1.0
