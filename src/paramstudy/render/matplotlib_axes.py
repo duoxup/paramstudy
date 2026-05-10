@@ -81,6 +81,7 @@ def draw_scatter_axes(
     meta: ColumnMetaRegistry | None = None,
     options: AxesOptions | None = None,
     color_limits: tuple[float, float] | None = None,
+    color_scale: UnitScale | None = None,
 ) -> AxesDrawResult:
     """Draw one scatter plot on an existing Matplotlib Axes."""
 
@@ -103,7 +104,8 @@ def draw_scatter_axes(
 
     kwargs: dict[str, Any] = {}
     if color_col is not None:
-        color_scale = _resolve_column_scale(subset, color_col, meta, options)
+        if color_scale is None:
+            color_scale = _resolve_column_scale(subset, color_col, meta, options)
         kwargs["c"] = _apply_scale(subset[color_col], color_scale)
         if options.color.cmap is not None:
             kwargs["cmap"] = options.color.cmap
@@ -137,6 +139,7 @@ def draw_heatmap_axes(
     meta: ColumnMetaRegistry | None = None,
     options: AxesOptions | None = None,
     color_limits: tuple[float, float] | None = None,
+    color_scale: UnitScale | None = None,
 ) -> AxesDrawResult:
     """Draw one regular-grid heatmap on an existing Matplotlib Axes."""
 
@@ -155,7 +158,7 @@ def draw_heatmap_axes(
     subset = df[[x_col, y_col, z_col]].dropna()
     x_scale = _resolve_column_scale(subset, x_col, meta, options)
     y_scale = _resolve_column_scale(subset, y_col, meta, options)
-    z_scale = _resolve_column_scale(subset, z_col, meta, options)
+    z_scale = color_scale if color_scale is not None else _resolve_column_scale(subset, z_col, meta, options)
     xs, ys, z_grid = _prepare_heatmap_grid(subset, x_col, y_col, z_col, options)
 
     kwargs: dict[str, Any] = {"shading": "auto"}
@@ -184,6 +187,7 @@ def draw_contour_axes(
     meta: ColumnMetaRegistry | None = None,
     options: AxesOptions | None = None,
     color_limits: tuple[float, float] | None = None,
+    color_scale: UnitScale | None = None,
 ) -> AxesDrawResult:
     """Draw one regular-grid contour plot on an existing Matplotlib Axes."""
 
@@ -202,7 +206,7 @@ def draw_contour_axes(
     subset = df[[x_col, y_col, z_col]].dropna()
     x_scale = _resolve_column_scale(subset, x_col, meta, options)
     y_scale = _resolve_column_scale(subset, y_col, meta, options)
-    z_scale = _resolve_column_scale(subset, z_col, meta, options)
+    z_scale = color_scale if color_scale is not None else _resolve_column_scale(subset, z_col, meta, options)
     xs, ys, z_grid = _prepare_heatmap_grid(subset, x_col, y_col, z_col, options)
 
     levels = _resolve_contour_levels(options.contour.levels, color_limits)
@@ -238,6 +242,7 @@ def draw_tricontour_axes(
     meta: ColumnMetaRegistry | None = None,
     options: AxesOptions | None = None,
     color_limits: tuple[float, float] | None = None,
+    color_scale: UnitScale | None = None,
 ) -> AxesDrawResult:
     """Draw one irregular-grid tricontour plot on an existing Matplotlib Axes."""
 
@@ -259,7 +264,7 @@ def draw_tricontour_axes(
 
     x_scale = _resolve_column_scale(subset, x_col, meta, options)
     y_scale = _resolve_column_scale(subset, y_col, meta, options)
-    z_scale = _resolve_column_scale(subset, z_col, meta, options)
+    z_scale = color_scale if color_scale is not None else _resolve_column_scale(subset, z_col, meta, options)
     x_values = _apply_scale(subset[x_col], x_scale)
     y_values = _apply_scale(subset[y_col], y_scale)
     z_values = _apply_scale(subset[z_col], z_scale)
@@ -294,6 +299,7 @@ def draw_tripcolor_axes(
     meta: ColumnMetaRegistry | None = None,
     options: AxesOptions | None = None,
     color_limits: tuple[float, float] | None = None,
+    color_scale: UnitScale | None = None,
 ) -> AxesDrawResult:
     """Draw one irregular-grid tripcolor plot on an existing Matplotlib Axes."""
 
@@ -315,7 +321,7 @@ def draw_tripcolor_axes(
 
     x_scale = _resolve_column_scale(subset, x_col, meta, options)
     y_scale = _resolve_column_scale(subset, y_col, meta, options)
-    z_scale = _resolve_column_scale(subset, z_col, meta, options)
+    z_scale = color_scale if color_scale is not None else _resolve_column_scale(subset, z_col, meta, options)
     kwargs: dict[str, Any] = {"shading": options.tripcolor.shading}
     if options.color.cmap is not None:
         kwargs["cmap"] = options.color.cmap

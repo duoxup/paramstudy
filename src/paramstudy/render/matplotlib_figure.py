@@ -79,7 +79,7 @@ def _draw_one_figure(
 
     axes_results: list[AxesDrawResult | None] = []
     colorbar_items: list[tuple[Any, plt.Axes, AxesSlot]] = []
-    slot_color_limits = _resolve_slot_color_limits(
+    slot_color_settings = _resolve_slot_color_settings(
         df, spec, plan, meta, axes_options, figure_options
     )
     axes_flat = axes.ravel()
@@ -96,15 +96,20 @@ def _draw_one_figure(
             axes_results.append(None)
             continue
 
+        settings = slot_color_settings.get(slot.index)
+        color_limits = settings.limits if settings is not None else None
+        color_scale = settings.scale if settings is not None else None
         result = _draw_axes(
-            ax, subset, spec, meta, axes_options, slot_color_limits.get(slot.index)
+            ax, subset, spec, meta, axes_options, color_limits, color_scale
         )
         if result.mappable is not None:
             colorbar_items.append((result.mappable, ax, slot))
         _set_slot_title(ax, slot, spec, df, meta, axes_options, figure_options)
         axes_results.append(result)
 
-    _add_colorbars(figure, colorbar_items, df, spec, meta, axes_options, figure_options)
+    _add_colorbars(
+        figure, colorbar_items, slot_color_settings, spec, meta, axes_options, figure_options
+    )
     _set_page_title(figure, plan.page_key, spec, df, meta, axes_options, figure_options)
     return FigureDrawResult(
         figure=figure,
@@ -121,29 +126,21 @@ def _draw_axes(
     meta: ColumnMetaRegistry | None,
     options: AxesOptions,
     color_limits: tuple[float, float] | None,
+    color_scale: UnitScale | None,
 ) -> AxesDrawResult:
     if spec.kind is PlotKind.LINE:
         return draw_line_axes(ax, df, spec, meta=meta, options=options)
+    color_kwargs = {"color_limits": color_limits, "color_scale": color_scale}
     if spec.kind is PlotKind.SCATTER:
-        return draw_scatter_axes(
-            ax, df, spec, meta=meta, options=options, color_limits=color_limits
-        )
+        return draw_scatter_axes(ax, df, spec, meta=meta, options=options, **color_kwargs)
     if spec.kind is PlotKind.HEATMAP:
-        return draw_heatmap_axes(
-            ax, df, spec, meta=meta, options=options, color_limits=color_limits
-        )
+        return draw_heatmap_axes(ax, df, spec, meta=meta, options=options, **color_kwargs)
     if spec.kind is PlotKind.CONTOUR:
-        return draw_contour_axes(
-            ax, df, spec, meta=meta, options=options, color_limits=color_limits
-        )
+        return draw_contour_axes(ax, df, spec, meta=meta, options=options, **color_kwargs)
     if spec.kind is PlotKind.TRICONTOUR:
-        return draw_tricontour_axes(
-            ax, df, spec, meta=meta, options=options, color_limits=color_limits
-        )
+        return draw_tricontour_axes(ax, df, spec, meta=meta, options=options, **color_kwargs)
     if spec.kind is PlotKind.TRIPCOLOR:
-        return draw_tripcolor_axes(
-            ax, df, spec, meta=meta, options=options, color_limits=color_limits
-        )
+        return draw_tripcolor_axes(ax, df, spec, meta=meta, options=options, **color_kwargs)
     raise NotImplementedError(
         f"Matplotlib figure rendering does not support {spec.kind.value!r} yet."
     )
@@ -281,7 +278,7 @@ def _format_facet_part(
 def _add_colorbars(
     figure: plt.Figure,
     items: list[tuple[Any, plt.Axes, AxesSlot]],
-    df: pd.DataFrame,
+    slot_color_settings: dict[int, "_ColorSlotSettings"],
     spec: PlotSpec,
     meta: ColumnMetaRegistry | None,
     axes_options: AxesOptions,
@@ -290,10 +287,15 @@ def _add_colorbars(
     if not items or figure_options.colorbar.mode is ColorbarMode.NONE:
         return
 
-    label = _colorbar_label(df, spec, meta, axes_options)
+    def label_for(slot: AxesSlot) -> str | None:
+        settings = slot_color_settings.get(slot.index)
+        scale = settings.scale if settings is not None else None
+        return _colorbar_label_for_scale(spec, meta, scale, axes_options)
+
     if figure_options.colorbar.mode is ColorbarMode.EACH:
-        for mappable, ax, _slot in items:
+        for mappable, ax, slot in items:
             colorbar = figure.colorbar(mappable, ax=ax)
+            label = label_for(slot)
             if label:
                 colorbar.set_label(label)
         return
@@ -302,6 +304,7 @@ def _add_colorbars(
         mappable = _shared_colorbar_mappable(items)
         axes = [ax for _mappable, ax, _slot in items]
         colorbar = figure.colorbar(mappable, ax=axes)
+        label = label_for(items[0][2])
         if label:
             colorbar.set_label(label)
         return
@@ -316,21 +319,21 @@ def _add_colorbars(
         mappable = _shared_colorbar_mappable(group_items)
         axes = [ax for _mappable, ax, _slot in group_items]
         colorbar = figure.colorbar(mappable, ax=axes)
+        label = label_for(group_items[0][2])
         if label:
             colorbar.set_label(label)
 
 
-def _colorbar_label(
-    df: pd.DataFrame,
+def _colorbar_label_for_scale(
     spec: PlotSpec,
     meta: ColumnMetaRegistry | None,
+    scale: UnitScale | None,
     options: AxesOptions,
 ) -> str | None:
     column = spec.responses.color or spec.responses.primary
     if column is None:
         return None
     column_meta = _meta(meta, column)
-    scale = _resolve_column_scale(df, column, column_meta, options)
     label = column_meta.display_name(column, prefer_symbol=options.labels.prefer_symbol)
     if options.labels.show_units and scale is not None:
         label = f"{label} [{scale.render_unit()}]"
@@ -354,15 +357,27 @@ def _resolve_column_scale(
     )
 
 
-def _resolve_slot_color_limits(
+@dataclass(frozen=True)
+class _ColorSlotSettings:
+    limits: tuple[float, float] | None
+    scale: UnitScale | None
+
+
+def _resolve_slot_color_settings(
     df: pd.DataFrame,
     spec: PlotSpec,
     plan: FigurePlan,
     meta: ColumnMetaRegistry | None,
     axes_options: AxesOptions,
     figure_options: FigureOptions,
-) -> dict[int, tuple[float, float] | None]:
-    """Per-slot color limits scoped by the active colorbar mode."""
+) -> dict[int, _ColorSlotSettings]:
+    """Per-slot color limits and unit scale, scoped by the active colorbar mode.
+
+    For shared colorbar modes (FIGURE / ROW / COL) the scale is computed on the
+    group's combined data and used to override per-subset auto-scaling so the
+    plotted values, the colorbar limits, and the colorbar label all share one
+    unit. For EACH mode each slot uses its own subset's auto-scale.
+    """
     column = spec.responses.color or spec.responses.primary
     if column is None or column not in df or not pd.api.types.is_numeric_dtype(df[column]):
         return {}
@@ -372,12 +387,20 @@ def _resolve_slot_color_limits(
         axes_options.color.vmin is not None or axes_options.color.vmax is not None
     )
 
+    result: dict[int, _ColorSlotSettings] = {}
+
     if mode in (ColorbarMode.NONE, ColorbarMode.EACH) and not user_override:
-        return {}
+        for slot in plan.slots:
+            if not slot.has_data or slot.is_unused:
+                continue
+            subset = _subset_for_slot(df, spec, slot)
+            _, scale = _column_limits_and_scale(subset, column, meta, axes_options)
+            result[slot.index] = _ColorSlotSettings(limits=None, scale=scale)
+        return result
 
     if mode in (ColorbarMode.NONE, ColorbarMode.EACH, ColorbarMode.FIGURE):
-        limits = _column_limits(df, column, meta, axes_options)
-        return {slot.index: limits for slot in plan.slots}
+        limits, scale = _column_limits_and_scale(df, column, meta, axes_options)
+        return {slot.index: _ColorSlotSettings(limits, scale) for slot in plan.slots}
 
     group_attr = "layout_row" if mode is ColorbarMode.ROW else "layout_col"
     by_group: dict[int, list[AxesSlot]] = {}
@@ -386,34 +409,33 @@ def _resolve_slot_color_limits(
             continue
         by_group.setdefault(getattr(slot, group_attr), []).append(slot)
 
-    result: dict[int, tuple[float, float] | None] = {}
     for group_slots in by_group.values():
         frames = [_subset_for_slot(df, spec, s) for s in group_slots]
         group_df = pd.concat(frames) if frames else df.iloc[0:0]
-        limits = _column_limits(group_df, column, meta, axes_options)
+        limits, scale = _column_limits_and_scale(group_df, column, meta, axes_options)
         for slot in group_slots:
-            result[slot.index] = limits
+            result[slot.index] = _ColorSlotSettings(limits, scale)
     return result
 
 
-def _column_limits(
+def _column_limits_and_scale(
     df: pd.DataFrame,
     column: str,
     meta: ColumnMetaRegistry | None,
     axes_options: AxesOptions,
-) -> tuple[float, float] | None:
+) -> tuple[tuple[float, float] | None, UnitScale | None]:
     if column not in df or not pd.api.types.is_numeric_dtype(df[column]):
-        return None
+        return None, None
     column_meta = _meta(meta, column)
     scale = _resolve_column_scale(df, column, column_meta, axes_options)
     multiplier = scale.multiplier if scale is not None else 1.0
     values = df[column].dropna().astype(float).to_numpy() * multiplier
     finite = values[np.isfinite(values)]
     if finite.size == 0:
-        return None
+        return None, scale
     vmin = float(np.nanmin(finite)) if axes_options.color.vmin is None else axes_options.color.vmin
     vmax = float(np.nanmax(finite)) if axes_options.color.vmax is None else axes_options.color.vmax
-    return vmin, vmax
+    return (vmin, vmax), scale
 
 
 def _shared_colorbar_mappable(items: list[tuple[Any, plt.Axes, AxesSlot]]) -> Any:

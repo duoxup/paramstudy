@@ -3,6 +3,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -200,6 +201,84 @@ def test_col_colorbar_uses_per_col_color_limits():
     assert set(clims_by_col.keys()) == {0, 1}
     assert clims_by_col[0][0] == pytest.approx((1.0, 4.0))
     assert clims_by_col[1][0] == pytest.approx((100.0, 400.0))
+    plt.close(result.figure)
+
+
+def test_col_mode_subplots_share_group_unit_scale():
+    """All subplots in a col share the col's auto-scaled unit, so drawn data
+    values map onto the colorbar's vmin..vmax range correctly.
+    """
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2],
+            "y": [10, 10, 20, 20],
+            "z": [1e-6, 2e-6, 1e-3, 2e-3],
+            "row": ["r0", "r0", "r1", "r1"],
+            "col": ["A", "A", "A", "A"],
+        }
+    )
+    meta = make_registry({"z": ["Energy", "E", "J"]})
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", row="row", col="col"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = FigureOptions(
+        facets=FacetLayoutOptions(mode=FacetLayoutMode.GRID),
+        colorbar=ColorbarOptions(mode=ColorbarMode.COL),
+    )
+
+    result = draw_figures(df, spec, meta=meta, figure_options=options)[0]
+
+    drawn_arrays = []
+    clims = []
+    for axes_result in result.axes_results:
+        if axes_result is None or axes_result.mappable is None:
+            continue
+        arr = np.asarray(axes_result.mappable.get_array()).ravel()
+        drawn_arrays.append(arr[np.isfinite(arr)])
+        clims.append(axes_result.mappable.get_clim())
+
+    assert len(set(clims)) == 1
+    vmin, vmax = clims[0]
+    overall_max = max(arr.max() for arr in drawn_arrays)
+    overall_min = min(arr.min() for arr in drawn_arrays)
+    assert overall_max == pytest.approx(vmax, rel=1e-6)
+    assert overall_min == pytest.approx(vmin, rel=1e-6)
+    plt.close(result.figure)
+
+
+def test_col_mode_colorbar_label_uses_per_group_scale():
+    """Each col's colorbar label reflects the col-group's auto-scaled unit."""
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2, 1, 2, 1, 2],
+            "y": [10, 10, 20, 20, 10, 10, 20, 20],
+            "z": [1e-6, 2e-6, 3e-6, 4e-6, 1e-3, 2e-3, 3e-3, 4e-3],
+            "row": ["r0", "r0", "r1", "r1"] * 2,
+            "col": ["A"] * 4 + ["B"] * 4,
+        }
+    )
+    meta = make_registry({"z": ["Energy", "E", "J"]})
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", row="row", col="col"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = FigureOptions(
+        facets=FacetLayoutOptions(mode=FacetLayoutMode.GRID),
+        colorbar=ColorbarOptions(mode=ColorbarMode.COL),
+    )
+
+    result = draw_figures(df, spec, meta=meta, figure_options=options)[0]
+
+    main_axes_ids = {id(ax) for ax in result.axes.ravel()}
+    cb_axes = [ax for ax in result.figure.axes if id(ax) not in main_axes_ids]
+    assert len(cb_axes) == 2
+
+    labels = [ax.get_ylabel() for ax in cb_axes]
+    assert any("uJ" in label for label in labels), labels
+    assert any("mJ" in label for label in labels), labels
     plt.close(result.figure)
 
 
