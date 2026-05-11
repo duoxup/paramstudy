@@ -10,8 +10,8 @@ import pandas as pd
 
 from paramstudy.metadata import ColumnMeta, ColumnMetaRegistry
 from paramstudy.options import AxesOptions, SecondaryContourOptions
-from paramstudy.render._util import format_scaled_value
-from paramstudy.scale import UnitScale, resolve_unit_scale
+from paramstudy.render._util import format_scaled_value, resolve_column_scale
+from paramstudy.scale import UnitScale
 from paramstudy.spec import PlotKind, PlotSpec
 
 
@@ -351,16 +351,7 @@ def _resolve_column_scale(
     registry: ColumnMetaRegistry | None,
     options: AxesOptions,
 ) -> UnitScale | None:
-    column_meta = _meta(registry, column)
-    if column_meta.unit is None or not pd.api.types.is_numeric_dtype(df[column]):
-        return None
-    return resolve_unit_scale(
-        df[column].dropna().to_numpy(),
-        column_meta.unit,
-        preferred_unit=column_meta.preferred_unit,
-        autoscale=options.units.autoscale,
-        use_preferred=options.units.use_preferred,
-    )
+    return resolve_column_scale(df, column, _meta(registry, column), options)
 
 
 def _format_label(

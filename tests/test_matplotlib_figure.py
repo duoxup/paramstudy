@@ -10,6 +10,7 @@ import pytest
 from paramstudy.metadata import make_registry
 from paramstudy.options import (
     AxesOptions,
+    ColorOptions,
     ColorbarMode,
     ColorbarOptions,
     FacetLayoutMode,
@@ -364,6 +365,45 @@ def test_shared_colorbar_with_contour_does_not_raise():
 
     assert len(results) == 1
     plt.close(results[0].figure)
+
+
+def test_each_mode_with_user_vmin_keeps_per_slot_vmax():
+    # EACH colorbar mode with a user vmin should keep vmax per-slot, not
+    # collapse both limits to the global df.
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2, 1, 2, 1, 2],
+            "y": [10, 10, 20, 20, 10, 10, 20, 20],
+            "z": [1.0, 2.0, 3.0, 4.0, 100.0, 200.0, 300.0, 400.0],
+            "row": ["a"] * 4 + ["b"] * 4,
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", row="row"),
+        responses=ResponseMap(primary="z"),
+    )
+    result = draw_figures(
+        df,
+        spec,
+        axes_options=AxesOptions(color=ColorOptions(vmin=0.0)),
+        figure_options=FigureOptions(
+            facets=FacetLayoutOptions(mode=FacetLayoutMode.GRID),
+            colorbar=ColorbarOptions(mode=ColorbarMode.EACH),
+        ),
+    )[0]
+
+    clims_by_row: dict[int, tuple[float, float]] = {}
+    for axes_result, slot in zip(result.axes_results, result.plan.slots):
+        if axes_result and axes_result.mappable is not None:
+            clims_by_row[slot.layout_row] = axes_result.mappable.get_clim()
+
+    # vmin is pinned to 0 globally.
+    assert all(clim[0] == pytest.approx(0.0) for clim in clims_by_row.values())
+    # vmax stays per-row instead of collapsing to 400 everywhere.
+    assert clims_by_row[0][1] == pytest.approx(4.0)
+    assert clims_by_row[1][1] == pytest.approx(400.0)
+    plt.close(result.figure)
 
 
 def test_shared_colorbar_preserves_log_norm():

@@ -12,7 +12,7 @@ import pandas as pd
 from paramstudy.metadata import ColumnMeta, ColumnMetaRegistry
 from paramstudy.options import AxesOptions, ColorbarMode, FigureOptions
 from paramstudy.planner import AxesSlot, FacetKey, FigurePlan, build_page_plan
-from paramstudy.render._util import format_scaled_value
+from paramstudy.render._util import format_scaled_value, resolve_column_scale
 from paramstudy.render.matplotlib_axes import (
     AxesDrawResult,
     draw_contour_axes,
@@ -22,7 +22,7 @@ from paramstudy.render.matplotlib_axes import (
     draw_tripcolor_axes,
     draw_tricontour_axes,
 )
-from paramstudy.scale import UnitScale, resolve_unit_scale
+from paramstudy.scale import UnitScale
 from paramstudy.spec import PlotKind, PlotSpec
 
 
@@ -340,21 +340,7 @@ def _colorbar_label_for_scale(
     return label
 
 
-def _resolve_column_scale(
-    df: pd.DataFrame,
-    column: str,
-    column_meta: ColumnMeta,
-    options: AxesOptions,
-) -> UnitScale | None:
-    if column_meta.unit is None or not pd.api.types.is_numeric_dtype(df[column]):
-        return None
-    return resolve_unit_scale(
-        df[column].dropna().to_numpy(),
-        column_meta.unit,
-        preferred_unit=column_meta.preferred_unit,
-        autoscale=options.units.autoscale,
-        use_preferred=options.units.use_preferred,
-    )
+_resolve_column_scale = resolve_column_scale
 
 
 @dataclass(frozen=True)
@@ -389,16 +375,23 @@ def _resolve_slot_color_settings(
 
     result: dict[int, _ColorSlotSettings] = {}
 
-    if mode in (ColorbarMode.NONE, ColorbarMode.EACH) and not user_override:
+    if mode in (ColorbarMode.NONE, ColorbarMode.EACH):
+        # Per-slot scale and auto-limits. When the user pins one or both
+        # color bounds the override applies per-slot (carried through
+        # _column_limits_and_scale), keeping the unpinned side responsive
+        # to that slot's data rather than collapsing to the global df range.
         for slot in plan.slots:
             if not slot.has_data or slot.is_unused:
                 continue
             subset = _subset_for_slot(df, spec, slot)
-            _, scale = _column_limits_and_scale(subset, column, meta, axes_options)
-            result[slot.index] = _ColorSlotSettings(limits=None, scale=scale)
+            limits, scale = _column_limits_and_scale(subset, column, meta, axes_options)
+            result[slot.index] = _ColorSlotSettings(
+                limits=limits if user_override else None,
+                scale=scale,
+            )
         return result
 
-    if mode in (ColorbarMode.NONE, ColorbarMode.EACH, ColorbarMode.FIGURE):
+    if mode is ColorbarMode.FIGURE:
         limits, scale = _column_limits_and_scale(df, column, meta, axes_options)
         return {slot.index: _ColorSlotSettings(limits, scale) for slot in plan.slots}
 

@@ -181,6 +181,10 @@ def _autoscale_compound_unit(
     magnitude = float(np.nanmedian(finite[finite > 0]))
     mag_in_base = magnitude * unit.factor_to_base
 
+    unscalable_indices = {
+        i for i, su in enumerate(unit.units) if su.symbol in _UNSCALABLE_SYMBOLS
+    }
+
     # --- resolve pinned targets ---
     pinned_map: dict[int, SimpleUnit] = {}
     if pinned:
@@ -218,7 +222,14 @@ def _autoscale_compound_unit(
             )
 
     # --- per-component autoscale (equal distribution, dim-weighted) ---
-    n_total = sum(abs(su.dimension) for su in unit.units)
+    # Unscalable components are forced to multiplier=1, so they should not
+    # consume any of the magnitude weight pool — the remaining scalable
+    # components must absorb the full base magnitude.
+    n_total = sum(
+        abs(su.dimension)
+        for i, su in enumerate(unit.units)
+        if i not in unscalable_indices
+    )
     per_dim_mag = mag_in_base ** (1.0 / n_total) if n_total > 0 else mag_in_base
 
     autoscaled: list[tuple[SimpleUnit, float]] = []
@@ -245,7 +256,11 @@ def _autoscale_compound_unit(
     M_left = M_total / M_pinned
 
     # --- distribute leftover ---
-    unpinned_weight = sum(abs(unit.units[i].dimension) for i in range(len(unit.units)) if i not in pinned_map)
+    unpinned_weight = sum(
+        abs(unit.units[i].dimension)
+        for i in range(len(unit.units))
+        if i not in pinned_map and i not in unscalable_indices
+    )
     result_units: list[SimpleUnit] = []
     for i, su in enumerate(unit.units):
         if i in pinned_map:

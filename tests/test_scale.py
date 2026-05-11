@@ -107,3 +107,18 @@ def test_resolve_compound_scale_c_stays_fixed():
 
     assert scale.multiplier == 1.0
     assert scale.unit.render() == "c"
+
+
+def test_compound_autoscale_with_unscalable_chooses_right_prefix():
+    # ~1000 MeV/c should auto-scale to GeV/c, not stay at MeV/c.
+    # The unscalable c component must not consume any of the weight pool.
+    unit = CompoundUnit(
+        [SimpleUnit("eV", SIPrefix.MEGA), SimpleUnit("c", dimension=-1)]
+    )
+    scale = autoscale_unit([1000.0, 1100.0, 1200.0], unit)
+
+    ev_prefixes = [su.prefix for su in scale.unit.units if su.symbol == "eV"]
+    c_prefixes = [su.prefix for su in scale.unit.units if su.symbol == "c"]
+    assert ev_prefixes == [SIPrefix.GIGA]
+    assert c_prefixes == [SIPrefix.NONE]
+    assert scale.multiplier == pytest.approx(1e-3)
