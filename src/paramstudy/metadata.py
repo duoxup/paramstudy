@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -51,8 +52,8 @@ class ColumnMeta:
         return {
             "label": self.label or "",
             "symbol": self.symbol or "",
-            "unit": self.unit.render() if self.unit is not None else "",
-            "preferred_unit": self.preferred_unit.render() if self.preferred_unit is not None else "",
+            "unit": _render_csv_unit(self.unit),
+            "preferred_unit": _render_csv_unit(self.preferred_unit),
         }
 
     @classmethod
@@ -260,12 +261,38 @@ def _clean_optional_string(value: Any) -> str | None:
 
 def _clean_csv_unit(value: str) -> UnitLike | None:
     """Parse a unit string from CSV, falling back to Unitless on failure."""
-    if not value.strip():
+    text = value.strip()
+    if not text:
         return None
     try:
-        return parse_unit(value.strip())
+        return parse_unit(text)
     except ValueError:
-        return Unitless(label=value.strip())
+        warnings.warn(
+            f"Unrecognized unit string {value!r} in CSV; falling back to Unitless. "
+            "Use JSON serialization for full fidelity.",
+            stacklevel=3,
+        )
+        return Unitless(label=text)
+
+
+def _render_csv_unit(unit: UnitLike | None) -> str:
+    """Render a unit string for CSV storage.
+
+    parse_unit only recognizes space as the multiplicative separator, so a
+    CompoundUnit with a non-space separator cannot round-trip through CSV.
+    Normalize the separator to space and warn so the user can switch to JSON
+    if they need to preserve a custom separator.
+    """
+    if unit is None:
+        return ""
+    if isinstance(unit, CompoundUnit) and unit.separator != " ":
+        warnings.warn(
+            f"CompoundUnit.separator={unit.separator!r} is not CSV-roundtrippable; "
+            "normalizing to space. Use JSON serialization for full fidelity.",
+            stacklevel=3,
+        )
+        return CompoundUnit(unit.units, separator=" ").render()
+    return unit.render()
 
 
 def _coerce_unit(value: Any) -> UnitLike | None:
