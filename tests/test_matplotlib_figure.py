@@ -9,11 +9,13 @@ import pytest
 
 from paramstudy.metadata import make_registry
 from paramstudy.options import (
+    AxesOptions,
     ColorbarMode,
     ColorbarOptions,
     FacetLayoutMode,
     FacetLayoutOptions,
     FigureOptions,
+    ScaleOptions,
 )
 from paramstudy.render.matplotlib_figure import draw_figures
 from paramstudy.spec import InputMap, PlotKind, PlotSpec, ResponseMap
@@ -362,6 +364,34 @@ def test_shared_colorbar_with_contour_does_not_raise():
 
     assert len(results) == 1
     plt.close(results[0].figure)
+
+
+def test_shared_colorbar_preserves_log_norm():
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 1, 2, 1, 2, 1, 2],
+            "y": [10, 10, 20, 20, 10, 10, 20, 20],
+            "z": [1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8],
+            "row": ["a"] * 4 + ["b"] * 4,
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y", row="row"),
+        responses=ResponseMap(primary="z"),
+    )
+    result = draw_figures(
+        df,
+        spec,
+        axes_options=AxesOptions(scale=ScaleOptions(z="log")),
+        figure_options=FigureOptions(colorbar=ColorbarOptions(mode=ColorbarMode.FIGURE)),
+    )[0]
+
+    main_ids = {id(ax) for ax in result.axes.ravel()}
+    cb_axes = [ax for ax in result.figure.axes if id(ax) not in main_ids]
+    assert len(cb_axes) == 1
+    assert cb_axes[0].get_yscale() == "log"
+    plt.close(result.figure)
 
 
 def ps_meta():

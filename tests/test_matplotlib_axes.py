@@ -3,6 +3,7 @@ import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from paramstudy.metadata import make_registry
@@ -247,4 +248,32 @@ def test_secondary_contour_label_uses_explicit_fontsize():
     draw_heatmap_axes(ax, df, spec, options=options)
 
     assert captured and captured[-1].get("fontsize") == 14
+    plt.close(figure)
+
+
+def test_secondary_contour_handles_mismatched_nan_pattern():
+    # z is NaN at every x=4 row; z2 is fully populated.
+    # Previously the secondary contour grid was built from full df while xs/ys
+    # came from the primary subset, causing a TypeError shape mismatch.
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4],
+            "y": [10] * 4 + [20] * 4 + [30] * 4,
+            "z": [1, 2, 3, np.nan, 4, 5, 6, np.nan, 7, 8, 9, np.nan],
+            "z2": [10, 20, 30, 40, 15, 25, 35, 45, 20, 30, 40, 50],
+        }
+    )
+    spec = PlotSpec(
+        kind=PlotKind.HEATMAP,
+        inputs=InputMap(primary="x", secondary="y"),
+        responses=ResponseMap(primary="z"),
+    )
+    options = AxesOptions(
+        secondary_contour=SecondaryContourOptions(column="z2", labels=False),
+    )
+    figure, ax = plt.subplots()
+    draw_heatmap_axes(ax, df, spec, options=options)
+
+    # Primary heatmap + secondary contour both drawn → at least 2 collections.
+    assert len(ax.collections) >= 2
     plt.close(figure)

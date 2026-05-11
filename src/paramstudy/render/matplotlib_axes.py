@@ -171,7 +171,7 @@ def draw_heatmap_axes(
         z_grid * (z_scale.multiplier if z_scale is not None else 1.0),
         **kwargs,
     )
-    _draw_secondary_grid_contour(ax, df, xs, ys, spec, options, x_scale, y_scale)
+    _draw_secondary_grid_contour(ax, df, spec, options, x_scale, y_scale)
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
     ax.set_xscale(options.scale.x)
@@ -226,7 +226,7 @@ def draw_contour_axes(
     if options.contour.labels:
         ax.clabel(mappable, inline=True, fontsize=8)
 
-    _draw_secondary_grid_contour(ax, df, xs, ys, spec, options, x_scale, y_scale)
+    _draw_secondary_grid_contour(ax, df, spec, options, x_scale, y_scale)
     ax.set_xlabel(_format_label(x_col, _meta(meta, x_col), x_scale, options))
     ax.set_ylabel(_format_label(y_col, _meta(meta, y_col), y_scale, options))
     ax.set_xscale(options.scale.x)
@@ -464,18 +464,28 @@ def _ordered_values(values: pd.Series) -> list[Any]:
 def _draw_secondary_grid_contour(
     ax: plt.Axes,
     df: pd.DataFrame,
-    xs: np.ndarray,
-    ys: np.ndarray,
     spec: PlotSpec,
     options: AxesOptions,
     x_scale: UnitScale | None,
     y_scale: UnitScale | None,
 ) -> None:
-    """Overlay a line-only contour for a secondary z column (heatmap / contour)."""
+    """Overlay a line-only contour for a secondary z column (heatmap / contour).
+
+    Uses the secondary column's own dropna subset to build (xs, ys, z2_grid)
+    so the overlay still aligns when the primary z and z2 columns have
+    different NaN coverage.
+    """
     z2_col = options.secondary_contour.column
     if z2_col is None or z2_col not in df.columns:
         return
-    _, _, z2_grid = _prepare_heatmap_grid(df, spec.inputs.primary, spec.inputs.secondary, z2_col, options)
+    subset = df[[spec.inputs.primary, spec.inputs.secondary, z2_col]].dropna()
+    if subset.empty:
+        return
+    xs, ys, z2_grid = _prepare_heatmap_grid(
+        subset, spec.inputs.primary, spec.inputs.secondary, z2_col, options
+    )
+    if xs.size == 0 or ys.size == 0:
+        return
     x_mult = x_scale.multiplier if x_scale is not None else 1.0
     y_mult = y_scale.multiplier if y_scale is not None else 1.0
     cs = ax.contour(

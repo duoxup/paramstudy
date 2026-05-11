@@ -5,7 +5,7 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize
+from matplotlib.colors import LogNorm, Normalize
 import numpy as np
 import pandas as pd
 
@@ -447,7 +447,12 @@ def _shared_colorbar_mappable(items: list[tuple[Any, plt.Axes, AxesSlot]]) -> An
     vmaxs = [pair[1] for pair in clim if pair[1] is not None]
     if not vmins or not vmaxs:
         return mappable
-    norm = Normalize(vmin=min(vmins), vmax=max(vmaxs))
+    vmin, vmax = min(vmins), max(vmaxs)
+    source_norm = getattr(mappable, "norm", None)
+    if isinstance(source_norm, LogNorm):
+        norm: Normalize = LogNorm(vmin=vmin, vmax=vmax)
+    else:
+        norm = Normalize(vmin=vmin, vmax=vmax)
     cmap = getattr(mappable, "cmap", None)
     return ScalarMappable(norm=norm, cmap=cmap)
 
